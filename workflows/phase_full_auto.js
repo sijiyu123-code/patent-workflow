@@ -25,12 +25,13 @@ const configResult = await agent(`读取配置文件: ${configPath}
 返回JSON:
 {
   "loaded": true/false,
+  "writer": "model",
   "phase1": {"gap_finder": "model", "combinator": "model", "extender": "model"},
   "phase2": {"judge_novelty": "model", "judge_feasibility": "model", "judge_value": "model", "chief_judge": "model"},
   "phase3": {"architect": "model", "critic": "model", "synthesizer": "model", "novelty": "model"},
   "phase4": {"draft": "model", "review": "model"}
 }
-注意：每个字段取数组的第一个元素作为模型名。例如 config 中 gap_finder: ["deepseek/xxx", "google/xxx"] → 返回 "deepseek/xxx"`, {
+注意：取数组第一个元素作为模型名；额外返回顶层 "writer" 字段。`, {
   label: '读取模型配置',
   phase: '加载配置',
   schema: {
@@ -81,6 +82,7 @@ const configResult = await agent(`读取配置文件: ${configPath}
 
 const cfg = configResult?.loaded ? configResult : {
   loaded: false,
+  writer: 'sonnet',
   phase1: { gap_finder: 'sonnet', combinator: 'sonnet', extender: 'sonnet' },
   phase2: { judge_novelty: 'sonnet', judge_feasibility: 'sonnet', judge_value: 'sonnet', chief_judge: 'opus' },
   phase3: { architect: 'sonnet', critic: 'sonnet', synthesizer: 'opus', novelty: 'sonnet' },
@@ -92,6 +94,22 @@ log(`  Phase1: ${cfg.phase1.gap_finder} / ${cfg.phase1.combinator} / ${cfg.phase
 log(`  Phase2: ${cfg.phase2.judge_novelty}/${cfg.phase2.judge_feasibility}/${cfg.phase2.judge_value} → 首席${cfg.phase2.chief_judge}`)
 log(`  Phase3: ${cfg.phase3.architect}→${cfg.phase3.critic}→${cfg.phase3.synthesizer}→${cfg.phase3.novelty}`)
 log(`  Phase4: 撰写${cfg.phase4.draft} 审核${cfg.phase4.review}`)
+
+// write-relay: gemini 产出内容，deepseek 负责写文件
+async function relayWrite(text, file, label) {
+  return agent(`将以下内容**原样**写入文件。不要修改、不要总结、不要添加任何额外文字：
+
+文件路径: ${file}
+
+=== 内容开始 ===
+${typeof text === 'string' ? text.slice(0, 30000) : JSON.stringify(text)}
+=== 内容结束 ===
+
+用 Write 工具写入。`, {
+    label: `写入:${label}`,
+    model: cfg.writer || 'deepseek/deepseek-v4-pro',
+  })
+}
 
 // ==================== Phase 1: 方向分析 ====================
 phase('方向分析')
@@ -150,26 +168,28 @@ const judgeValue = agent(`"价值评委"。权重: 商业价值50% 可行性30% 
   model: cfg.phase2.judge_value,
 })
 
-const chiefJudge = await agent(`"首席评委"。读取三位评委评分（auto_judge_novelty/feasibility/value.md），
-加权汇总（新颖性×0.35+可行性×0.30+价值×0.35），选1个方向，输出裁决报告。
-用 Write 保存到 ${outputDir}/auto_decision.md`, {
-  label: '首席评委终裁',
+const chiefJudgeAnalysis = await agent(`"首席评委"。读取三位评委评分（auto_judge_novelty/feasibility/value.md），
+加权汇总（新颖性×0.35+可行性×0.30+价值×0.35），选1个方向，输出完整裁决报告。
+注意：直接输出报告文本，不要使用 Write 工具。`, {
+  label: '首席评委分析',
   phase: '评委决策',
   model: cfg.phase2.chief_judge,
 })
+const chiefJudge = await relayWrite(chiefJudgeAnalysis, `${outputDir}/auto_decision.md`, '首席裁决')
 
 log(`评委决策完成 → ${outputDir}/auto_decision.md`)
 
 // ==================== Phase 3: 技术辩论 ====================
 phase('技术辩论')
 
-const architect = await agent(`"架构师"。读取 ${outputDir}/auto_decision.md + 专利摘要。
+const architectAnalysis = await agent(`"架构师"。读取 ${outputDir}/auto_decision.md + 专利摘要。
 提出完整技术方案（架构/模块/数据流/实施路径），标注薄弱点。
-用 Write 保存到 ${outputDir}/auto_architect_plan.md`, {
-  label: '架构师提案',
+注意：直接输出完整方案文本，不要使用 Write 工具。`, {
+  label: '架构师分析',
   phase: '技术辩论',
   model: cfg.phase3.architect,
 })
+const architect = await relayWrite(architectAnalysis, `${outputDir}/auto_architect_plan.md`, '架构方案')
 
 const critic = await agent(`"批判者"。读取 ${outputDir}/auto_architect_plan.md + 专利摘要。
 逐模块质疑（替代方案/专利冲突/风险），指出缺失维度和过度设计。
@@ -179,13 +199,14 @@ const critic = await agent(`"批判者"。读取 ${outputDir}/auto_architect_pla
   model: cfg.phase3.critic,
 })
 
-const synthesizer = await agent(`"合成者"。读取架构师方案 + 批判意见。
+const synthesizerAnalysis = await agent(`"合成者"。读取架构师方案 + 批判意见。
 逐条回应批判，综合定稿最终技术方案。
-用 Write 保存到 ${outputDir}/auto_tech_plan.md`, {
-  label: '合成者定稿',
+注意：直接输出最终方案文本，不要使用 Write 工具。`, {
+  label: '合成者分析',
   phase: '技术辩论',
   model: cfg.phase3.synthesizer,
 })
+const synthesizer = await relayWrite(synthesizerAnalysis, `${outputDir}/auto_tech_plan.md`, '技术方案')
 
 const novelty = await agent(`"专利审查员"。读取 ${outputDir}/auto_tech_plan.md + 专利摘要。
 逐组件对比、创新高度评估、Top-3创新点、风险预警。
@@ -200,13 +221,14 @@ log(`技术辩论完成 → ${outputDir}/auto_tech_plan.md`)
 // ==================== Phase 4: 撰写+审核 ====================
 phase('撰写审核')
 
-const draft = await agent(`"专利撰写工程师"。读取 format_template.md + auto_tech_plan.md + auto_novelty.md + auto_decision.md。
-撰写完整技术发明专利交底书（6个必须章节，严格遵循format_template）。
-用 Write 保存到 ${outputDir}/auto_patent_draft.md`, {
-  label: '撰写初稿',
+const draftAnalysis = await agent(`"专利撰写工程师"。读取 format_template.md + auto_tech_plan.md + auto_novelty.md + auto_decision.md。
+撰写完整技术发明专利交底书（6个必须章节，严格遵循format_template），直接输出完整交底书文本。
+注意：直接输出完整交底书，不要使用 Write 工具。`, {
+  label: '撰写分析',
   phase: '撰写审核',
   model: cfg.phase4.draft,
 })
+const draft = await relayWrite(draftAnalysis, `${outputDir}/auto_patent_draft.md`, '专利初稿')
 
 const review = await agent(`"专利质量审核员"。读取 auto_patent_draft.md + format_template.md。
 4维度逐项打分（格式/逻辑/区分度/语言，各10分），输出问题清单+自动修复建议。

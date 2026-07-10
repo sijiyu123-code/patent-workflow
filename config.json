@@ -1,12 +1,15 @@
 {
   "models": {
-    "_comment": "可用模型: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, qiniu/gpt-5.5, anthropic/claude-haiku-4-5",
-    "_comment2": "每个角色可用单个模型字符串，或模型数组（多个模型并行→自动合并）",
+    "_comment": "可用: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, anthropic/claude-haiku-4-5",
+    "_comment2": "gemini能对话但不能调Write, 通过deepseek relay写文件。gpt-5.5不可用。",
+    "_comment3": "writer模型专门负责文件写入, 其他模型产出内容由writer落盘",
+
+    "writer": "deepseek/deepseek-v4-pro",
 
     "phase1_direction": {
-      "gap_finder": ["deepseek/deepseek-v4-pro", "google/gemini-2.5-pro"],
-      "combinator": ["deepseek/deepseek-v4-pro", "google/gemini-2.5-pro"],
-      "extender": ["deepseek/deepseek-v4-pro", "anthropic/claude-haiku-4-5"]
+      "gap_finder": "deepseek/deepseek-v4-pro",
+      "combinator": "deepseek/deepseek-v4-pro",
+      "extender": "deepseek/deepseek-v4-pro"
     },
 
     "phase2_decision": {
@@ -19,12 +22,12 @@
     "phase3_deepdive": {
       "architect": "google/gemini-2.5-pro",
       "critic": "deepseek/deepseek-v4-pro",
-      "synthesizer": "qiniu/gpt-5.5",
+      "synthesizer": "google/gemini-2.5-pro",
       "novelty": "deepseek/deepseek-v4-pro"
     },
 
     "phase4_writing": {
-      "draft": "qiniu/gpt-5.5",
+      "draft": "google/gemini-2.5-pro",
       "review": "anthropic/claude-haiku-4-5"
     }
   }
