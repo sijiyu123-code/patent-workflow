@@ -1,0 +1,19 @@
+# 已有专利原文（涉密，不提交）
+mine/
+
+# 提取的专利文本（涉密）
+extracted_texts/
+
+# 专利摘要库（涉密）
+patent_summaries/
+
+# 各 Phase 输出（运行时生成）
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+
+# 系统文件
+.DS_Store
+Thumbs.db
