@@ -3,6 +3,7 @@ export const meta = {
   description: '专利撰写：auto模式全自动 / interactive模式每阶段暂停确认',
   phases: [
     { title: '加载配置', detail: '读取config.json' },
+    { title: '准备摘要库', detail: '自动提取专利文本+生成摘要(首次或mine/更新后)' },
     { title: '方向分析', detail: '空白发现/组合创新/延伸拓展 3Agent并行' },
     { title: '评委决策', detail: '3评委独立评分→首席评委终裁' },
     { title: '技术辩论', detail: '架构师→批判者→合成者→新颖性审查' },
@@ -18,8 +19,8 @@ const configPath = projectRoot + '/config.json'
 // ==================== Phase 0: 加载配置 ====================
 phase('加载配置')
 
-const configResult = await agent(`读取: ${configPath}
-返回JSON（取数组第一个元素）:
+const configResult = await agent(`先尝试Read ${configPath}，如果不存在再尝试 ${projectRoot}/config.example.json。
+读取成功后返回JSON（取数组第一个元素）:
 {
   "loaded": true/false,
   "mode": "auto"或"interactive",
@@ -62,6 +63,106 @@ const hintTag = hint ? `\n\n【限定方向】本次专利撰写聚焦于: ${hin
 
 log(`模式: ${mode === 'auto' ? '🤖 全自动' : '👆 半自动交互'}${hint ? ' | 方向: ' + hint : ''}`)
 log(`模型: ${cfg.phase1.gap_finder}/${cfg.phase2.chief_judge}/${cfg.phase3.synthesizer}/${cfg.phase4.draft}`)
+
+// ==================== Phase 0: 自动准备摘要库 ====================
+phase('准备摘要库')
+
+const hasSummaries = await agent(`检查 ${summaryDir}/ 目录下是否存在 _summary.md 文件（至少3个）。
+用 Bash: ls ${summaryDir}/*_summary.md 2>/dev/null | wc -l
+返回JSON: {"count": 数字}`, {
+  label: '检查摘要库',
+  phase: '准备摘要库',
+  schema: { type:'object', properties:{count:{type:'number'}}, required:['count'] }
+})
+
+if ((hasSummaries?.count || 0) < 3) {
+  log(`摘要库不足(当前${hasSummaries?.count||0}份)，自动生成中...`)
+
+  // Step 1: 提取 mine/ 下的 .docx/.doc 文本
+  const extractResult = await agent(`执行以下Python脚本提取专利文本:
+python3 << 'PYEOF'
+import docx, os, json
+mine_dir = "${projectRoot}/mine"
+out_dir = "${projectRoot}/extracted_texts"
+os.makedirs(out_dir, exist_ok=True)
+results = []
+for fname in sorted(os.listdir(mine_dir)):
+    if fname.startswith('~$'): continue
+    fpath = os.path.join(mine_dir, fname)
+    if not (fname.endswith('.docx') or fname.endswith('.doc')): continue
+    try:
+        doc = docx.Document(fpath)
+        text = "\\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+        txt_name = fname.rsplit('.',1)[0] + '.txt'
+        with open(os.path.join(out_dir, txt_name), 'w') as f: f.write(text)
+        results.append({"file":fname, "len":len(text), "status":"ok"})
+    except Exception as e:
+        results.append({"file":fname, "len":0, "status":str(e)[:60]})
+print(json.dumps({"total":len(results),"files":results}))
+PYEOF
+用 Bash 工具执行。`, {
+    label: '提取专利文本',
+    phase: '准备摘要库',
+    agentType: 'general-purpose',
+  })
+  log(`文本提取: ${typeof extractResult === 'string' ? extractResult.slice(0,100) : 'done'}`)
+
+  // Step 2: 批量生成结构化摘要
+  const txtDir = projectRoot + '/extracted_texts'
+  const txtFiles = await agent(`列出 ${txtDir}/ 下的 .txt 文件并返回文件名数组。
+用 Bash: ls ${txtDir}/*.txt 2>/dev/null
+返回JSON: {"files": ["文件名1","文件名2",...]}`, {
+    label: '列出文本文件',
+    phase: '准备摘要库',
+    schema: { type:'object', properties:{files:{type:'array',items:{type:'string'}}}, required:['files'] }
+  })
+
+  const files = txtFiles?.files || []
+  if (files.length > 0) {
+    // 分批并行生成摘要
+    const batchSize = 5
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize)
+      await parallel(batch.map(f => () => {
+        const name = f.replace('.txt','').replace(/^.*\//,'')
+        return agent(`读取 ${txtDir}/${f}，这是一份专利文档。
+生成结构化摘要，用 Write 保存到 ${summaryDir}/${name}_summary.md:
+## 专利基本信息（名称/领域/要解决的问题）
+## 技术方案概要（200字）
+## 核心技术组件（3-5个）
+## 创新点（2-4个）
+## 权利要求方向
+## 技术关键词（5-10个）`, {
+          label: `摘要:${name.slice(0,25)}`,
+          phase: '准备摘要库',
+          model: 'deepseek/deepseek-v4-pro',
+        })
+      }))
+    }
+    log(`摘要生成: ${files.length} 份完成`)
+  }
+
+  // Step 3: 生成格式模板 + 专利全景地图
+  const template = agent(`读取 ${txtDir}/ 下3-4份代表性专利文本，提取通用格式模板。
+输出: 章节结构、用语规范、权利要求模板、检查清单。
+用 Write 保存到 ${summaryDir}/format_template.md`, {
+    label: '格式模板',
+    phase: '准备摘要库',
+    model: 'deepseek/deepseek-v4-pro',
+  })
+
+  const landscape = agent(`读取 ${summaryDir}/ 下所有 _summary.md，生成专利全景地图。
+包含: 总览、技术方向分类、交叉图谱、新方向建议。
+用 Write 保存到 ${summaryDir}/patent_landscape.md`, {
+    label: '专利地图',
+    phase: '准备摘要库',
+    model: 'deepseek/deepseek-v4-pro',
+  })
+
+  log(`摘要库准备完成！`)
+} else {
+  log(`摘要库已就绪 (${hasSummaries.count} 份)`)
+}
 
 // write-relay: 不能调Write的模型通过deepseek写文件
 async function relayWrite(text, file, label) {
