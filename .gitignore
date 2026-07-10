@@ -10,6 +10,9 @@ patent_summaries/
 # 各 Phase 输出（运行时生成）
 outputs/
 
+# 当前工作内容（涉密）
+work_content.md
+
 # Python
 __pycache__/
 *.pyc
