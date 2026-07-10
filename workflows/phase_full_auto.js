@@ -125,7 +125,7 @@ ${mergeFiles.map(f => `- ${f}`).join('\n')}
 用 Write 保存到 ${outputFile}`, {
     label: `合并:${roleCN}`,
     phase: '方向分析',
-    model: 'sonnet',
+    model: models[0],
   })
 
   return mergeAgent
