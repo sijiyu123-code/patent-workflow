@@ -2,6 +2,7 @@ export const meta = {
   name: 'full-auto-patent',
   description: '全自动专利撰写：3Agent方向分析 → 3评委决策 → 3Agent辩论深挖 → 撰写+审核，全程无交互',
   phases: [
+    { title: '加载配置', detail: '读取config.json获取各Agent模型分配' },
     { title: '方向分析', detail: '空白发现/组合创新/延伸拓展 3Agent并行' },
     { title: '评委决策', detail: '3评委独立评分→首席评委终裁' },
     { title: '技术辩论', detail: '架构师提案→批判者质疑→合成者定稿→新颖性审查' },
@@ -12,6 +13,95 @@ export const meta = {
 const projectRoot = '/workspace/project-nas-1000073/sijiyu/demos/zhuanliproject'
 const summaryDir = projectRoot + '/patent_summaries'
 const outputDir = projectRoot + '/outputs'
+const configPath = projectRoot + '/config.json'
+
+// 默认模型配置（config.json 不存在或读取失败时使用）
+const DEFAULT_MODELS = {
+  phase1_direction: { gap_finder: 'sonnet', combinator: 'sonnet', extender: 'sonnet' },
+  phase2_decision: { judge_novelty: 'sonnet', judge_feasibility: 'sonnet', judge_value: 'sonnet', chief_judge: 'opus' },
+  phase3_deepdive: { architect: 'sonnet', critic: 'sonnet', synthesizer: 'opus', novelty: 'sonnet' },
+  phase4_writing: { draft: 'opus', review: 'sonnet' },
+}
+
+// ==================== Phase 0: 加载配置 ====================
+phase('加载配置')
+
+const configResult = await agent(`读取配置文件: ${configPath}
+用 Read 工具读取该JSON文件，解析其中的models配置。
+如果文件不存在或读取失败，返回默认配置。
+
+返回严格的JSON格式：
+{
+  "loaded": true/false,
+  "models": {
+    "phase1_direction": {"gap_finder": "model", "combinator": "model", "extender": "model"},
+    "phase2_decision": {"judge_novelty": "model", "judge_feasibility": "model", "judge_value": "model", "chief_judge": "model"},
+    "phase3_deepdive": {"architect": "model", "critic": "model", "synthesizer": "model", "novelty": "model"},
+    "phase4_writing": {"draft": "model", "review": "model"}
+  },
+  "source": "config.json" 或 "defaults"
+}`, {
+  label: '读取模型配置',
+  phase: '加载配置',
+  schema: {
+    type: 'object',
+    properties: {
+      loaded: { type: 'boolean' },
+      models: {
+        type: 'object',
+        properties: {
+          phase1_direction: {
+            type: 'object',
+            properties: {
+              gap_finder: { type: 'string' },
+              combinator: { type: 'string' },
+              extender: { type: 'string' },
+            },
+            required: ['gap_finder', 'combinator', 'extender']
+          },
+          phase2_decision: {
+            type: 'object',
+            properties: {
+              judge_novelty: { type: 'string' },
+              judge_feasibility: { type: 'string' },
+              judge_value: { type: 'string' },
+              chief_judge: { type: 'string' },
+            },
+            required: ['judge_novelty', 'judge_feasibility', 'judge_value', 'chief_judge']
+          },
+          phase3_deepdive: {
+            type: 'object',
+            properties: {
+              architect: { type: 'string' },
+              critic: { type: 'string' },
+              synthesizer: { type: 'string' },
+              novelty: { type: 'string' },
+            },
+            required: ['architect', 'critic', 'synthesizer', 'novelty']
+          },
+          phase4_writing: {
+            type: 'object',
+            properties: {
+              draft: { type: 'string' },
+              review: { type: 'string' },
+            },
+            required: ['draft', 'review']
+          },
+        },
+        required: ['phase1_direction', 'phase2_decision', 'phase3_deepdive', 'phase4_writing']
+      },
+      source: { type: 'string' },
+    },
+    required: ['loaded', 'models', 'source']
+  }
+})
+
+const m = configResult?.models || DEFAULT_MODELS
+log(`模型配置: ${configResult?.source || 'defaults'}`)
+log(`  Phase1: ${m.phase1_direction.gap_finder}/${m.phase1_direction.combinator}/${m.phase1_direction.extender}`)
+log(`  Phase2: 评委${m.phase2_decision.judge_novelty}/${m.phase2_decision.judge_feasibility}/${m.phase2_decision.judge_value} 首席${m.phase2_decision.chief_judge}`)
+log(`  Phase3: 架构${m.phase3_deepdive.architect}→批判${m.phase3_deepdive.critic}→合成${m.phase3_deepdive.synthesizer}→审查${m.phase3_deepdive.novelty}`)
+log(`  Phase4: 撰写${m.phase4_writing.draft} 审核${m.phase4_writing.review}`)
 
 // ==================== Phase 1: 方向分析（3 Agent 并行） ====================
 phase('方向分析')
@@ -29,7 +119,7 @@ const gapFinder = agent(`你是"技术空白发现者"。${commonContext}
 用 Write 保存到 ${outputDir}/auto_gap_finder.md`, {
   label: '空白发现',
   phase: '方向分析',
-  agentType: 'general-purpose',
+  model: m.phase1_direction.gap_finder,
 })
 
 const combinator = agent(`你是"组合创新者"。${commonContext}
@@ -38,7 +128,7 @@ const combinator = agent(`你是"组合创新者"。${commonContext}
 用 Write 保存到 ${outputDir}/auto_combinator.md`, {
   label: '组合创新',
   phase: '方向分析',
-  agentType: 'general-purpose',
+  model: m.phase1_direction.combinator,
 })
 
 const extender = agent(`你是"延伸拓展者"。${commonContext}
@@ -47,7 +137,7 @@ const extender = agent(`你是"延伸拓展者"。${commonContext}
 用 Write 保存到 ${outputDir}/auto_extender.md`, {
   label: '延伸拓展',
   phase: '方向分析',
-  agentType: 'general-purpose',
+  model: m.phase1_direction.extender,
 })
 
 log(`方向分析完成: 3个Agent各提出4-5个方向`)
@@ -73,7 +163,7 @@ const judgeNovelty = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_novelty.md`, {
   label: '新颖性评委',
   phase: '评委决策',
-  agentType: 'general-purpose',
+  model: m.phase2_decision.judge_novelty,
 })
 
 const judgeFeasibility = agent(`${judgeCommon}
@@ -85,7 +175,7 @@ const judgeFeasibility = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_feasibility.md`, {
   label: '可行性评委',
   phase: '评委决策',
-  agentType: 'general-purpose',
+  model: m.phase2_decision.judge_feasibility,
 })
 
 const judgeValue = agent(`${judgeCommon}
@@ -97,10 +187,9 @@ const judgeValue = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_value.md`, {
   label: '价值评委',
   phase: '评委决策',
-  agentType: 'general-purpose',
+  model: m.phase2_decision.judge_value,
 })
 
-// 首席评委：综合三位评委意见，做出最终裁决
 const chiefJudge = await agent(`你是首席评委。三位独立评委已提交评分：
 - 新颖性评委: ${outputDir}/auto_judge_novelty.md
 - 可行性评委: ${outputDir}/auto_judge_feasibility.md
@@ -109,7 +198,7 @@ const chiefJudge = await agent(`你是首席评委。三位独立评委已提交
 任务：
 1. 将三位评委的评分加权汇总（新颖性×0.35 + 可行性×0.30 + 价值×0.35）
 2. 如果前三名分数差在1分以内，说明存在分歧，请分析分歧原因并给出你的倾向
-3. **最终只选1个方向**，输出裁决报告：
+3. 最终只选1个方向，输出裁决报告：
    - 所有候选方向的加权评分对比表（列明每位评委的原始打分）
    - 前三名的详细分析（分歧点、共识点）
    - 最终选定方向及裁决理由
@@ -117,20 +206,17 @@ const chiefJudge = await agent(`你是首席评委。三位独立评委已提交
 
 用 Write 保存到 ${outputDir}/auto_decision.md
 
-你必须做出明确的选择，不能模棱两可。`
-
-, {
+你必须做出明确的选择，不能模棱两可。`, {
   label: '首席评委终裁',
   phase: '评委决策',
-  agentType: 'general-purpose',
+  model: m.phase2_decision.chief_judge,
 })
 
 log(`评委决策完成: 3评委独立评分 + 首席裁决，已选定方向`)
 
-// ==================== Phase 3: 技术辩论（3 Agent + 新颖性审查） ====================
+// ==================== Phase 3: 技术辩论（3 Agent辩论 + 新颖性审查） ====================
 phase('技术辩论')
 
-// 第一轮：架构师提出初始方案
 const architect = await agent(`你是资深技术架构师。请读取：
 - 选定方向: ${outputDir}/auto_decision.md
 - 专利全景地图: ${summaryDir}/patent_landscape.md
@@ -143,39 +229,37 @@ const architect = await agent(`你是资深技术架构师。请读取：
 3. 数据流和关键算法（伪代码）
 4. 实施路径
 
-请把你设计的方案中你认为**可能存在争议或薄弱的地方**也标注出来（"自曝其短"），
+请把你设计的方案中你认为可能存在争议或薄弱的地方也标注出来（"自曝其短"），
 这样后续的批判者可以更有针对性地挑战。
 
 用 Write 保存到 ${outputDir}/auto_architect_plan.md`, {
   label: '架构师提案',
   phase: '技术辩论',
-  agentType: 'general-purpose',
+  model: m.phase3_deepdive.architect,
 })
 
-// 第二轮：批判者审读方案，发起挑战
 const critic = await agent(`你是技术批判者，角色是"唱反调"——找出方案中的漏洞、风险和被忽视的替代方案。
 
 请读取架构师的方案: ${outputDir}/auto_architect_plan.md
 以及所有已有专利摘要: ${summaryDir}/ 下的 _summary.md
 
 你的任务是严格的批判分析：
-1. **逐模块挑战**：对架构师的每个技术模块，提出至少1个质疑：
+1. 逐模块挑战：对架构师的每个技术模块，提出至少1个质疑：
    - 这个设计有没有更简单的替代方案？
    - 是否存在已有专利已经覆盖了这个思路？
    - 实施中最大的风险是什么？
-2. **缺失维度检查**：架构师有没有遗漏的重要技术问题？
-3. **过度设计检查**：哪些模块是"为了复杂而复杂"，可以砍掉或简化？
-4. **提出替代方案**：对于你认为有问题的模块，给出具体的替代设计。
+2. 缺失维度检查：架构师有没有遗漏的重要技术问题？
+3. 过度设计检查：哪些模块是"为了复杂而复杂"，可以砍掉或简化？
+4. 提出替代方案：对于你认为有问题的模块，给出具体的替代设计。
 
 用 Write 保存到 ${outputDir}/auto_critic_challenge.md
 
 你要犀利但不刻薄，目标是让方案更强，而不是推翻它。`, {
   label: '批判者挑战',
   phase: '技术辩论',
-  agentType: 'general-purpose',
+  model: m.phase3_deepdive.critic,
 })
 
-// 第三轮：合成者综合双方，输出最终方案
 const synthesizer = await agent(`你是技术合成者。架构师提出了方案，批判者指出了问题，你来拍板定稿。
 
 请读取：
@@ -184,9 +268,9 @@ const synthesizer = await agent(`你是技术合成者。架构师提出了方�
 - 已有专利摘要: ${summaryDir}/ 下的 _summary.md
 
 你的任务是综合双方意见，产出最终技术方案：
-1. **逐条回应批判**：对批判者提出的每个质疑，给出你的判断（接受/部分接受/驳回）及理由
-2. **采纳与修改**：明确哪些批判意见导致方案调整，调整了什么
-3. **最终方案**：输出调整后的完整技术方案，包含：
+1. 逐条回应批判：对批判者提出的每个质疑，给出你的判断（接受/部分接受/驳回）及理由
+2. 采纳与修改：明确哪些批判意见导致方案调整，调整了什么
+3. 最终方案：输出调整后的完整技术方案，包含：
    - 系统架构（采纳修改后）
    - 核心技术模块（标注哪些是架构师原版、哪些经过批判修正）
    - 数据流/算法伪代码
@@ -198,10 +282,9 @@ const synthesizer = await agent(`你是技术合成者。架构师提出了方�
 你拥有最终决定权，但每个决定都要给出理由。`, {
   label: '合成者定稿',
   phase: '技术辩论',
-  agentType: 'general-purpose',
+  model: m.phase3_deepdive.synthesizer,
 })
 
-// 新颖性审查
 const novelty = await agent(`你是专利审查员，独立审查最终技术方案。
 
 请读取：
@@ -211,16 +294,16 @@ const novelty = await agent(`你是专利审查员，独立审查最终技术方
 - 批判意见: ${outputDir}/auto_critic_challenge.md
 
 进行新颖性论证：
-1. **逐组件对比**：技术方案的每个核心组件与已有专利一一对比
-2. **创新高度评估**：整体方案是 incremental / substantial / breakthrough？
-3. **Top-3 创新点**：最具新颖性的3个技术点
-4. **风险预警**：哪些技术点可能被审查员质疑新颖性？如何应对？
-5. **强化建议**：如果在撰写专利时需要进一步强化新颖性，应该强调什么？
+1. 逐组件对比：技术方案的每个核心组件与已有专利一一对比
+2. 创新高度评估：整体方案是 incremental / substantial / breakthrough？
+3. Top-3 创新点：最具新颖性的3个技术点
+4. 风险预警：哪些技术点可能被审查员质疑新颖性？如何应对？
+5. 强化建议：如果在撰写专利时需要进一步强化新颖性，应该强调什么？
 
 用 Write 保存到 ${outputDir}/auto_novelty.md`, {
   label: '新颖性审查',
   phase: '技术辩论',
-  agentType: 'general-purpose',
+  model: m.phase3_deepdive.novelty,
 })
 
 log(`技术辩论完成: 架构师→批判者→合成者→新颖性审查，四轮递进`)
@@ -238,23 +321,12 @@ const draft = await agent(`你是资深专利撰写工程师。请读取：
 撰写一份完整的技术发明专利交底书，严格遵循 format_template.md 的章节结构和用语规范：
 
 必须包含的章节：
-1. **缩略语和关键术语定义**
-2. **本发明所要解决的技术问题（发明目的）**
-   - 清晰阐述现有技术存在的问题
-   - 本发明的目的和要达成的效果
-3. **相关技术背景与最相近似的现有实现方案**
-   - 引用已有专利中的相关方案
-   - 逐一分析每个现有方案的缺陷
-   - 总结为何现有方案无法解决本技术问题
-4. **本发明技术方案的详细阐述**（核心章节）
-   - 分模块/阶段详述技术方案
-   - 每个模块：遇到什么困难→通过什么技术手段解决→为什么这样设计
-   - 包含伪代码或结构化步骤描述
-   - 至少一个完整实施例
-5. **本发明技术方案带来的有益效果**
-   - 与现有方案量化/定性对比
-6. **本发明的技术关键点或欲保护点**
-   - 至少5个独立或从属权利要求方向
+1. 缩略语和关键术语定义
+2. 本发明所要解决的技术问题（发明目的）
+3. 相关技术背景与最相近似的现有实现方案（引用已有专利）
+4. 本发明技术方案的详细阐述（核心章节，分模块详述）
+5. 本发明技术方案带来的有益效果
+6. 本发明的技术关键点或欲保护点（至少5个权利要求方向）
 
 写作要求：
 - 使用"本发明旨在..."、"其特征在于..."等专利用语
@@ -265,10 +337,9 @@ const draft = await agent(`你是资深专利撰写工程师。请读取：
 用 Write 保存到 ${outputDir}/auto_patent_draft.md`, {
   label: '撰写初稿',
   phase: '撰写审核',
-  agentType: 'general-purpose',
+  model: m.phase4_writing.draft,
 })
 
-// 审核Agent
 const review = await agent(`你是专利质量审核员，你要像真正的专利代理机构审核员一样严格审查。
 
 请读取：
@@ -280,52 +351,49 @@ const review = await agent(`你是专利质量审核员，你要像真正的专�
 从4个维度逐项审核打分（每项满分10分，总分40分）：
 
 ### A. 格式与规范（满分10分）
-检查项：
-- [ ] 章节结构是否完整（对照 format_template 的必须章节）
+- [ ] 章节结构是否完整
 - [ ] 编号方式是否规范
 - [ ] 术语使用前后是否一致
 - [ ] 图表/表格引用格式是否正确
 
 ### B. 逻辑与完整性（满分10分）
-检查项：
 - [ ] "技术问题→现有缺陷→本发明方案→有益效果"逻辑链是否闭合
 - [ ] 每个权利要求保护点是否在技术方案中有充分展开
-- [ ] 技术方案是否可实施（本领域技术人员能否复现）
+- [ ] 技术方案是否可实施
 - [ ] 是否有遗漏的关键技术细节
 
 ### C. 新颖性与区分度（满分10分）
-检查项：
 - [ ] 背景技术章节是否如实引用了最接近的已有方案
 - [ ] 本发明与已有方案的差异是否表述清晰
 - [ ] 没有夸大或模糊化与已有方案的差异
 - [ ] 权利要求保护范围是否与已有专利有实质区别
 
 ### D. 语言与表述（满分10分）
-检查项：
 - [ ] 是否符合专利用语规范
-- [ ] 是否有模糊歧义的表述（"大概""可能""有时"等）
+- [ ] 是否有模糊歧义的表述
 - [ ] 技术描述是否精确
 - [ ] 篇幅和信息密度是否合适
 
 输出格式：
 1. 整体评分表（ABCD四项分数+总分）
 2. 逐项详细问题清单，每行：章节 | 问题 | 严重程度(必须改/建议改/可选) | 修改建议
-3. **自动修复**：对于"必须改"级别的问题，直接给出修改后的文段
-4. 总结：该初稿是否达到提交水准？如果能达到，给出最终评分。
+3. 自动修复：对于"必须改"级别的问题，直接给出修改后的文段
+4. 总结：该初稿是否达到提交水准？
 
 用 Write 保存到 ${outputDir}/auto_quality_review.md`, {
   label: '质量审核',
   phase: '撰写审核',
-  agentType: 'general-purpose',
+  model: m.phase4_writing.review,
 })
 
 log(`========================================`)
 log(`  全自动专利撰写完成！`)
 log(`========================================`)
 log(``)
+log(`模型配置: ${configResult?.source || 'defaults'}`)
 log(`📋 产出文件清单:`)
 log(`  方向分析: auto_gap_finder.md / auto_combinator.md / auto_extender.md`)
-log(`  评委决策: auto_judge_novelty.md / auto_judge_feasibility.md / auto_judge_value.md`)
+log(`  评委评分: auto_judge_novelty.md / auto_judge_feasibility.md / auto_judge_value.md`)
 log(`  最终决策: auto_decision.md`)
 log(`  技术辩论: auto_architect_plan.md → auto_critic_challenge.md → auto_tech_plan.md`)
 log(`  新颖性审查: auto_novelty.md`)
@@ -335,6 +403,7 @@ log(``)
 log(`查看初稿后如需修改，直接与Claude讨论即可。`)
 
 return {
+  config: configResult,
   phase1: { gapFinder, combinator, extender },
   phase2: { judgeNovelty, judgeFeasibility, judgeValue, chiefJudge },
   phase3: { architect, critic, synthesizer, novelty },

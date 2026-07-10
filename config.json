@@ -1,0 +1,30 @@
+{
+  "models": {
+    "_comment": "可选模型: sonnet, opus, haiku, fable。sonnet=均衡, opus=最强推理, haiku=快速便宜, fable=最新",
+
+    "phase1_direction": {
+      "gap_finder": "sonnet",
+      "combinator": "sonnet",
+      "extender": "sonnet"
+    },
+
+    "phase2_decision": {
+      "judge_novelty": "sonnet",
+      "judge_feasibility": "sonnet",
+      "judge_value": "sonnet",
+      "chief_judge": "opus"
+    },
+
+    "phase3_deepdive": {
+      "architect": "sonnet",
+      "critic": "sonnet",
+      "synthesizer": "opus",
+      "novelty": "sonnet"
+    },
+
+    "phase4_writing": {
+      "draft": "opus",
+      "review": "sonnet"
+    }
+  }
+}
