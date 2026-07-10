@@ -4,154 +4,142 @@
 
 基于已有专利分析和当前工作内容，半自动化地完成新专利的：**方向构思 → 技术深挖 → 初稿撰写 → 迭代打磨**。
 
-## 工作目录结构
+---
+
+## 使用方法
+
+### 1. 准备工作内容（可选）
+
+```bash
+cp work_content.example.md work_content.md
+# 编辑 work_content.md，填入你的近期工作/绩效
+```
+
+不填也行，workflow 会纯基于已有专利的技术空白来构思方向。
+
+### 2. 运行
+
+```js
+// 全自动模式（一键到底出初稿）
+Workflow({scriptPath: "workflows/phase_full_auto.js"})
+
+// 半自动交互模式（每阶段暂停等你确认）
+// 先改 config.json: "mode": "interactive"
+// 然后同样运行，每阶段结束后重跑自动继续
+Workflow({scriptPath: "workflows/phase_full_auto.js"})
+```
+
+**全自动**一次跑完，直接输出专利初稿。**半自动**每阶段暂停，你审完重跑自动跳到下一阶段。
+
+### 3. 切换模型
+
+编辑 `config.json`：
+
+```json
+{
+  "mode": "auto",
+  "models": {
+    "writer": "deepseek/deepseek-v4-pro",
+    "phase1_direction": {
+      "gap_finder": "deepseek/deepseek-v4-pro",
+      "combinator": "z-ai/glm-5.2",
+      "extender": "deepseek/deepseek-v4-pro"
+    },
+    "phase2_decision": { "chief_judge": "google/gemini-2.5-pro", ... },
+    "phase3_deepdive": { "architect": "google/gemini-2.5-pro", ... },
+    "phase4_writing": { "draft": "google/gemini-2.5-pro", "review": "z-ai/glm-5.2" }
+  }
+}
+```
+
+可用模型：`deepseek/deepseek-v4-pro`、`google/gemini-2.5-pro`、`z-ai/glm-5.2`、`anthropic/claude-haiku-4-5`。
+
+> gemini 不支持 Write 工具，workflow 自动用 deepseek relay 写文件，无需额外配置。
+
+### 4. 产出
+
+```
+outputs/
+├── auto_gap_finder.md          # Phase 1: 方向分析
+├── auto_combinator.md
+├── auto_extender.md
+├── auto_judge_novelty.md       # Phase 2: 评委评分
+├── auto_judge_feasibility.md
+├── auto_judge_value.md
+├── auto_decision.md            # 最终选定方向
+├── auto_architect_plan.md      # Phase 3: 技术辩论
+├── auto_critic_challenge.md
+├── auto_tech_plan.md           # 最终技术方案
+├── auto_novelty.md             # 新颖性审查
+├── auto_patent_draft.md        # ⭐ 专利初稿
+└── auto_quality_review.md      # 质量审核报告
+```
+
+### 5. 迭代打磨
+
+初稿出来后直接跟 Claude 对话修改：
+
+```
+"权利要求2范围太窄了，帮我扩大"
+"有益效果需要量化指标"
+"背景技术部分引用不够，补充一下"
+```
+
+---
+
+## 配置说明
+
+### 模式
+
+| mode | 行为 |
+|------|------|
+| `auto` | 全自动，一次运行到底 |
+| `interactive` | 每阶段暂停，重跑自动跳过已完成阶段 |
+
+### 模型
+
+| 角色 | 说明 | 推荐模型 |
+|------|------|---------|
+| writer | 写文件 relay（gemini 等不兼容模型的兜底） | deepseek |
+| gap_finder | 空白发现者 | deepseek |
+| combinator | 组合创新者 | glm-5.2 |
+| extender | 延伸拓展者 | deepseek |
+| judge_* | 三维评委 | deepseek / glm-5.2 |
+| chief_judge | 首席评委终裁 | gemini |
+| architect | 架构师提案 | gemini |
+| critic | 批判者挑战 | glm-5.2 |
+| synthesizer | 合成者定稿 | gemini |
+| novelty | 新颖性审查 | deepseek |
+| draft | 专利撰写 | gemini |
+| review | 质量审核 | glm-5.2 |
+
+---
+
+## 目录结构
 
 ```
 zhuanliproject/
-├── mine/                          # 已有专利原文 (.docx/.doc)
-├── extracted_texts/               # Phase 0 产出: 提取的专利文本
-├── patent_summaries/              # Phase 0 产出: 结构化摘要库
-│   ├── *_summary.md              # 每份专利的结构化摘要
-│   ├── patent_landscape.md       # 专利全景地图（方向分类+空白分析+建议）
-│   ├── format_template.md        # 格式撰写模板
-│   └── _patent_groups.json       # 专利分组信息
-├── workflows/                     # Phase 1-3 的 workflow 脚本
+├── config.json              # 模型+模式配置
+├── work_content.md          # 你的工作内容（不入库）
+├── work_content.example.md  # 工作内容模板
+├── workflows/
+│   ├── phase_full_auto.js   # 全自动/半自动 workflow
 │   ├── phase1_direction_brainstorm.js
 │   ├── phase2_tech_deepdive.js
 │   └── phase3_patent_draft.js
-├── outputs/                       # 各 Phase 的输出
-│   ├── phase1_candidate_directions.md   # Phase 1 产出
-│   ├── phase1_selected_direction.md    # 用户选定方向 (需手动创建)
-│   ├── phase2_tech_plan_draft.md       # Phase 2 产出
-│   ├── phase2_novelty_assessment.md    # Phase 2 产出
-│   ├── phase3_patent_draft.md          # Phase 3 产出
-│   └── phase3_quality_review.md        # Phase 3 产出
-└── work_content.md                # 当前工作内容（可选输入）
+├── outputs/                 # 运行时产出
+├── patent_summaries/        # Phase 0: 专利摘要库
+│   ├── *_summary.md
+│   ├── patent_landscape.md
+│   └── format_template.md
+├── extracted_texts/         # Phase 0: 提取的专利文本
+└── mine/                    # 已有专利原文（不入库）
 ```
-
-## 使用流程
-
-### Phase 0: 离线准备（已完成）
-
-已有专利深度分析 → 结构化摘要库 + 格式模板 + 专利全景地图。
-
-**产出文件**：
-- `patent_summaries/` 下 21 份结构化摘要
-- `patent_summaries/patent_landscape.md` — 专利全景地图
-- `patent_summaries/format_template.md` — 格式撰写模板
-
-当新增专利时，可重新运行 Phase 0 增量更新。
 
 ---
 
-### Phase 1: 专利方向构思（自动 → 你审核）
+## Phase 0: 离线准备
 
-**运行方式**：
-```
-Workflow({scriptPath: "workflows/phase1_direction_brainstorm.js"})
-```
+已有专利 → 提取文本 → 结构化摘要 → 格式模板 → 专利全景地图。
 
-**流程**：
-1. 4 个 Agent 从不同视角并行分析：空白发现者、组合创新者、延伸拓展者、工作映射者
-2. Synthesis Agent 汇总去重 → 输出 3-5 个候选方向
-3. **你来审核**：阅读 `outputs/phase1_candidate_directions.md`
-
-**你的操作**：
-- 选择一个方向，创建 `outputs/phase1_selected_direction.md`
-- 或与 Agent 讨论某个方向的可行性，调整方向后再创建
-- 方向文件只需包含：方向名称 + 你的选择理由 + 任何特殊要求
-
----
-
-### Phase 2: 技术方案深挖（自动 → 你审核）
-
-**运行方式**：
-```
-Workflow({scriptPath: "workflows/phase2_tech_deepdive.js"})
-```
-
-**前置条件**：`outputs/phase1_selected_direction.md` 必须存在。
-
-**流程**：
-1. 技术调研 Agent：设计完整技术方案（架构、算法、实施路径）
-2. 新颖性论证 Agent：独立验证与已有专利的差异、评估风险
-3. **你来审核**：阅读 `outputs/phase2_tech_plan_draft.md` 和 `phase2_novelty_assessment.md`
-
-**你的操作**：
-- 审核通过 → 进入 Phase 3
-- 需要修改 → 与 Agent 讨论，手动修改方案文件，或重新运行 Phase 2
-
----
-
-### Phase 3: 专利初稿撰写（自动 → 你审核）
-
-**运行方式**：
-```
-Workflow({scriptPath: "workflows/phase3_patent_draft.js"})
-```
-
-**前置条件**：Phase 2 的技术方案已确认。
-
-**流程**：
-1. 撰写 Agent：按照 format_template.md 严格格式撰写完整专利交底书
-2. 自检 Agent：从格式、逻辑、区分度、语言 4 维度审核
-3. **你来审核**：阅读 `outputs/phase3_patent_draft.md` 和 `phase3_quality_review.md`
-
----
-
-### Phase 4: 迭代打磨（你与 Agent 交互讨论）
-
-**这阶段不需要 workflow 脚本**，直接与 Claude 对话即可：
-
-- 针对审核报告中的问题逐条修改
-- 讨论某个技术细节的表述方式
-- 补充/调整权利要求
-- 多次迭代直到满意
-
-对话示例：
-- "根据质量审核报告的第3条，修改技术方案阐述部分"
-- "权利要求2的范围太窄了，帮我扩大一下"
-- "有益效果部分需要更量化，帮我想几个可量化的指标"
-
----
-
-## 可选：提供当前工作内容
-
-如果希望基于当前工作进行专利撰写，在项目根目录创建 `work_content.md`：
-
-```markdown
-# 当前工作内容
-
-## 项目概述
-（简要描述你正在做的项目）
-
-## 核心技术点
-1. xxx
-2. xxx
-
-## 技术创新
-（你认为有创新性的技术方案）
-
-## 相关数据/实验结果
-（如有）
-```
-
-如果 `work_content.md` 为空或不存在，Phase 1 将纯粹基于已有专利的技术空白进行方向构思。
-
----
-
-## Phase 0 更新
-
-当有新的专利文档时：
-
-1. 将新 .docx 放入 `mine/`
-2. 运行文本提取脚本
-3. 重新运行 Phase 0 的摘要生成 workflow
-
----
-
-## 技术栈
-
-- **工作流引擎**：Claude Code Workflow（多 Agent 编排）
-- **文档分析**：python-docx + 直接 XML 解析
-- **专利领域**：AI/多模态/游戏/直播
+新增专利时：放入 `mine/` → 运行提取脚本 → 重新生成摘要。
