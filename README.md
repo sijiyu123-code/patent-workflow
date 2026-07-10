@@ -17,7 +17,21 @@ cp work_content.example.md work_content.md
 
 不填也行，workflow 会纯基于已有专利的技术空白来构思方向。
 
-### 2. 运行
+### 2. 设定方向（可选）
+
+在 `config.json` 中设置 `direction_hint`，限定本次撰写的专利方向：
+
+```json
+{
+  "direction_hint": "游戏AI多模态推理",
+  // 或 "直播内容理解"、"LoRA微调"、"端侧部署" 等
+  // 留空 "" 则不限定方向
+}
+```
+
+这个 hint 会注入到所有 Agent 的 prompt 中，确保全流程围绕该方向展开。
+
+### 3. 运行
 
 ```js
 // 全自动模式（一键到底出初稿）
@@ -31,7 +45,7 @@ Workflow({scriptPath: "workflows/phase_full_auto.js"})
 
 **全自动**一次跑完，直接输出专利初稿。**半自动**每阶段暂停，你审完重跑自动跳到下一阶段。
 
-### 3. 切换模型
+### 4. 切换模型
 
 编辑 `config.json`：
 
@@ -56,7 +70,7 @@ Workflow({scriptPath: "workflows/phase_full_auto.js"})
 
 > gemini 不支持 Write 工具，workflow 自动用 deepseek relay 写文件，无需额外配置。
 
-### 4. 产出
+### 5. 产出
 
 ```
 outputs/
@@ -75,7 +89,7 @@ outputs/
 └── auto_quality_review.md      # 质量审核报告
 ```
 
-### 5. 迭代打磨
+### 6. 迭代打磨
 
 初稿出来后直接跟 Claude 对话修改：
 
@@ -88,6 +102,12 @@ outputs/
 ---
 
 ## 配置说明
+
+### 方向限定
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `direction_hint` | 预设专利方向，注入所有Agent的prompt。可为空。 | `"游戏AI"`, `"多模态融合"`, `"LoRA微调"`, `""` |
 
 ### 模式
 
