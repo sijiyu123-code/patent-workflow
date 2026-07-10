@@ -1,7 +1,7 @@
 {
   "models": {
-    "_comment": "可用: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, anthropic/claude-haiku-4-5",
-    "_comment2": "gemini能对话但不能调Write, 通过deepseek relay写文件。gpt-5.5不可用。",
+    "_comment": "可用: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, z-ai/glm-5.2, anthropic/claude-haiku-4-5",
+    "_comment2": "gemini能对话但不能调Write, 通过deepseek relay写文件。gpt-5.5不可用。glm-5.2待测试。",
     "_comment3": "writer模型专门负责文件写入, 其他模型产出内容由writer落盘",
 
     "writer": "deepseek/deepseek-v4-pro",
