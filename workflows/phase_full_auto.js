@@ -1,9 +1,9 @@
 export const meta = {
   name: 'full-auto-patent',
-  description: '全自动专利撰写：3Agent方向分析 → 3评委决策 → 3Agent辩论深挖 → 撰写+审核，全程无交互',
+  description: '全自动专利撰写：多模型方向分析 → 3评委决策 → 3Agent辩论深挖 → 撰写+审核，全程无交互',
   phases: [
     { title: '加载配置', detail: '读取config.json获取各Agent模型分配' },
-    { title: '方向分析', detail: '空白发现/组合创新/延伸拓展 3Agent并行' },
+    { title: '方向分析', detail: '空白发现/组合创新/延伸拓展，每角色可配多模型并行→合并' },
     { title: '评委决策', detail: '3评委独立评分→首席评委终裁' },
     { title: '技术辩论', detail: '架构师提案→批判者质疑→合成者定稿→新颖性审查' },
     { title: '撰写审核', detail: '按模板撰写初稿→审核Agent打分+改进建议' },
@@ -15,132 +15,151 @@ const summaryDir = projectRoot + '/patent_summaries'
 const outputDir = projectRoot + '/outputs'
 const configPath = projectRoot + '/config.json'
 
-// 默认模型配置（config.json 不存在或读取失败时使用）
-const DEFAULT_MODELS = {
-  phase1_direction: { gap_finder: 'sonnet', combinator: 'sonnet', extender: 'sonnet' },
-  phase2_decision: { judge_novelty: 'sonnet', judge_feasibility: 'sonnet', judge_value: 'sonnet', chief_judge: 'opus' },
-  phase3_deepdive: { architect: 'sonnet', critic: 'sonnet', synthesizer: 'opus', novelty: 'sonnet' },
-  phase4_writing: { draft: 'opus', review: 'sonnet' },
+// 标准化模型配置：字符串→数组
+function normalizeModels(models) {
+  const normalized = {}
+  for (const [phase, roles] of Object.entries(models)) {
+    normalized[phase] = {}
+    for (const [role, val] of Object.entries(roles)) {
+      normalized[phase][role] = Array.isArray(val) ? val : [val]
+    }
+  }
+  return normalized
 }
 
 // ==================== Phase 0: 加载配置 ====================
 phase('加载配置')
 
+const defaultConfig = {
+  phase1_direction: { gap_finder: ['sonnet'], combinator: ['sonnet'], extender: ['sonnet'] },
+  phase2_decision: { judge_novelty: ['sonnet'], judge_feasibility: ['sonnet'], judge_value: ['sonnet'], chief_judge: ['opus'] },
+  phase3_deepdive: { architect: ['sonnet'], critic: ['sonnet'], synthesizer: ['opus'], novelty: ['sonnet'] },
+  phase4_writing: { draft: ['opus'], review: ['sonnet'] },
+}
+
 const configResult = await agent(`读取配置文件: ${configPath}
-用 Read 工具读取该JSON文件，解析其中的models配置。
+用 Read 工具读取该JSON文件。如果文件存在，返回其models对象（每个字段可能是字符串或字符串数组）。
 如果文件不存在或读取失败，返回默认配置。
 
-返回严格的JSON格式：
+返回JSON格式：
 {
   "loaded": true/false,
-  "models": {
-    "phase1_direction": {"gap_finder": "model", "combinator": "model", "extender": "model"},
-    "phase2_decision": {"judge_novelty": "model", "judge_feasibility": "model", "judge_value": "model", "chief_judge": "model"},
-    "phase3_deepdive": {"architect": "model", "critic": "model", "synthesizer": "model", "novelty": "model"},
-    "phase4_writing": {"draft": "model", "review": "model"}
-  },
+  "models": { ... 原始配置内容 ... },
   "source": "config.json" 或 "defaults"
-}`, {
+}
+
+注意：models中的每个值保持原始类型不变（字符串或数组）`, {
   label: '读取模型配置',
   phase: '加载配置',
-  schema: {
-    type: 'object',
-    properties: {
-      loaded: { type: 'boolean' },
-      models: {
-        type: 'object',
-        properties: {
-          phase1_direction: {
-            type: 'object',
-            properties: {
-              gap_finder: { type: 'string' },
-              combinator: { type: 'string' },
-              extender: { type: 'string' },
-            },
-            required: ['gap_finder', 'combinator', 'extender']
-          },
-          phase2_decision: {
-            type: 'object',
-            properties: {
-              judge_novelty: { type: 'string' },
-              judge_feasibility: { type: 'string' },
-              judge_value: { type: 'string' },
-              chief_judge: { type: 'string' },
-            },
-            required: ['judge_novelty', 'judge_feasibility', 'judge_value', 'chief_judge']
-          },
-          phase3_deepdive: {
-            type: 'object',
-            properties: {
-              architect: { type: 'string' },
-              critic: { type: 'string' },
-              synthesizer: { type: 'string' },
-              novelty: { type: 'string' },
-            },
-            required: ['architect', 'critic', 'synthesizer', 'novelty']
-          },
-          phase4_writing: {
-            type: 'object',
-            properties: {
-              draft: { type: 'string' },
-              review: { type: 'string' },
-            },
-            required: ['draft', 'review']
-          },
-        },
-        required: ['phase1_direction', 'phase2_decision', 'phase3_deepdive', 'phase4_writing']
-      },
-      source: { type: 'string' },
-    },
-    required: ['loaded', 'models', 'source']
-  }
 })
 
-const m = configResult?.models || DEFAULT_MODELS
+// 解析并标准化
+let rawModels = {}
+if (configResult?.loaded && configResult.models) {
+  rawModels = configResult.models
+} else {
+  rawModels = defaultConfig
+}
+
+const m = normalizeModels(rawModels)
+
 log(`模型配置: ${configResult?.source || 'defaults'}`)
-log(`  Phase1: ${m.phase1_direction.gap_finder}/${m.phase1_direction.combinator}/${m.phase1_direction.extender}`)
+log(`  Phase1 空白发现: ${m.phase1_direction.gap_finder.join(' + ')}`)
+log(`  Phase1 组合创新: ${m.phase1_direction.combinator.join(' + ')}`)
+log(`  Phase1 延伸拓展: ${m.phase1_direction.extender.join(' + ')}`)
 log(`  Phase2: 评委${m.phase2_decision.judge_novelty}/${m.phase2_decision.judge_feasibility}/${m.phase2_decision.judge_value} 首席${m.phase2_decision.chief_judge}`)
 log(`  Phase3: 架构${m.phase3_deepdive.architect}→批判${m.phase3_deepdive.critic}→合成${m.phase3_deepdive.synthesizer}→审查${m.phase3_deepdive.novelty}`)
 log(`  Phase4: 撰写${m.phase4_writing.draft} 审核${m.phase4_writing.review}`)
 
-// ==================== Phase 1: 方向分析（3 Agent 并行） ====================
+// ==================== Phase 1: 方向分析（多模型并行 + 合并） ====================
 phase('方向分析')
 
-const commonContext = `工作目录: ${projectRoot}
+const directionContext = `工作目录: ${projectRoot}
 需要读取的资料：
 1. 专利全景地图: ${summaryDir}/patent_landscape.md
 2. 所有专利摘要: ${summaryDir}/ 目录下的 _summary.md 文件
 3. 当前工作内容（如有）: ${projectRoot}/work_content.md
 请先用 Read 工具读取上述文件，然后从你的特定视角分析。`
 
-const gapFinder = agent(`你是"技术空白发现者"。${commonContext}
+// 辅助函数：运行多模型Agent + 合并
+async function runMultiModelAgents(role, roleCN, models, prompt, outputFile) {
+  if (models.length === 1) {
+    // 单模型，直接运行
+    return agent(prompt, {
+      label: roleCN,
+      phase: '方向分析',
+      model: models[0],
+    })
+  }
+
+  // 多模型：每个模型独立运行 → 合并
+  const modelOutputs = []
+  const modelLabels = models.map((model, i) => `${roleCN}(${model.split('/').pop()})`)
+
+  // 并行运行多个模型
+  const results = await parallel(models.map((model, i) => () => {
+    const individualPrompt = `${prompt}
+
+请将你的分析结果用 Write 保存到 ${outputFile.replace('.md', `_${i}.md`)}`
+    return agent(individualPrompt, {
+      label: modelLabels[i],
+      phase: '方向分析',
+      model: model,
+    })
+  }))
+
+  // 合并Agent：读取所有模型的输出，取长补短
+  const mergeFiles = models.map((_, i) => outputFile.replace('.md', `_${i}.md`))
+  const mergeAgent = await agent(`你是方向合成者。${models.length}个模型（${models.join(', ')}）各自独立完成了"${roleCN}"的分析。
+
+请读取它们的输出：
+${mergeFiles.map(f => `- ${f}`).join('\n')}
+
+任务：
+1. 汇总所有方向建议
+2. 去重：合并相同或高度相似的方向
+3. 互补：如果模型A提出了某个方向但深度不够，模型B恰好有补充细节，将两者融合
+4. 冲突处理：如果两个模型对同一方向给出矛盾判断，选择论证更充分的一方，并说明理由
+5. 最终输出合并后的完整方向分析（4-6个方向），包含交叉验证过的技术细节
+
+用 Write 保存到 ${outputFile}`, {
+    label: `合并:${roleCN}`,
+    phase: '方向分析',
+    model: 'sonnet',
+  })
+
+  return mergeAgent
+}
+
+// 三个方向角色并行执行（每个角色内部多模型并行→合并）
+const [gapFinder, combinator, extender] = await Promise.all([
+  runMultiModelAgents(
+    'gap_finder', '空白发现',
+    m.phase1_direction.gap_finder,
+    `你是"技术空白发现者"。${directionContext}
 从技术空白和场景扩展视角，提出4-5个新专利方向。
-每个方向：方向名称、要解决的问题、gap分析、创新角度、可行性(high/medium/low)。
-用 Write 保存到 ${outputDir}/auto_gap_finder.md`, {
-  label: '空白发现',
-  phase: '方向分析',
-  model: m.phase1_direction.gap_finder,
-})
-
-const combinator = agent(`你是"组合创新者"。${commonContext}
+每个方向：方向名称、要解决的问题、gap分析、创新角度、可行性(high/medium/low)。`,
+    `${outputDir}/auto_gap_finder.md`
+  ),
+  runMultiModelAgents(
+    'combinator', '组合创新',
+    m.phase1_direction.combinator,
+    `你是"组合创新者"。${directionContext}
 从跨方向技术融合视角，拆解已有专利技术组件重新拼接，提出4-5个新方向。
-每个方向：方向名称、要解决的问题、融合了哪些技术、创新角度、可行性。
-用 Write 保存到 ${outputDir}/auto_combinator.md`, {
-  label: '组合创新',
-  phase: '方向分析',
-  model: m.phase1_direction.combinator,
-})
-
-const extender = agent(`你是"延伸拓展者"。${commonContext}
+每个方向：方向名称、要解决的问题、融合了哪些技术、创新角度、可行性。`,
+    `${outputDir}/auto_combinator.md`
+  ),
+  runMultiModelAgents(
+    'extender', '延伸拓展',
+    m.phase1_direction.extender,
+    `你是"延伸拓展者"。${directionContext}
 在已有专利上做深度延伸（方法论深化/性能提升/系统化/跨场景迁移），提出4-5个新方向。
-每个方向：方向名称、要解决的问题、基于哪个专利、延伸路径、核心创新、可行性。
-用 Write 保存到 ${outputDir}/auto_extender.md`, {
-  label: '延伸拓展',
-  phase: '方向分析',
-  model: m.phase1_direction.extender,
-})
+每个方向：方向名称、要解决的问题、基于哪个专利、延伸路径、核心创新、可行性。`,
+    `${outputDir}/auto_extender.md`
+  )
+])
 
-log(`方向分析完成: 3个Agent各提出4-5个方向`)
+log(`方向分析完成: 3个角色 × ${m.phase1_direction.gap_finder.length + m.phase1_direction.combinator.length + m.phase1_direction.extender.length}个模型 → 合并为3份报告`)
 
 // ==================== Phase 2: 评委决策（3评委 + 首席评委） ====================
 phase('评委决策')
@@ -163,7 +182,7 @@ const judgeNovelty = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_novelty.md`, {
   label: '新颖性评委',
   phase: '评委决策',
-  model: m.phase2_decision.judge_novelty,
+  model: m.phase2_decision.judge_novelty[0],
 })
 
 const judgeFeasibility = agent(`${judgeCommon}
@@ -175,7 +194,7 @@ const judgeFeasibility = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_feasibility.md`, {
   label: '可行性评委',
   phase: '评委决策',
-  model: m.phase2_decision.judge_feasibility,
+  model: m.phase2_decision.judge_feasibility[0],
 })
 
 const judgeValue = agent(`${judgeCommon}
@@ -187,7 +206,7 @@ const judgeValue = agent(`${judgeCommon}
 用 Write 保存评分结果到 ${outputDir}/auto_judge_value.md`, {
   label: '价值评委',
   phase: '评委决策',
-  model: m.phase2_decision.judge_value,
+  model: m.phase2_decision.judge_value[0],
 })
 
 const chiefJudge = await agent(`你是首席评委。三位独立评委已提交评分：
@@ -209,7 +228,7 @@ const chiefJudge = await agent(`你是首席评委。三位独立评委已提交
 你必须做出明确的选择，不能模棱两可。`, {
   label: '首席评委终裁',
   phase: '评委决策',
-  model: m.phase2_decision.chief_judge,
+  model: m.phase2_decision.chief_judge[0],
 })
 
 log(`评委决策完成: 3评委独立评分 + 首席裁决，已选定方向`)
@@ -235,7 +254,7 @@ const architect = await agent(`你是资深技术架构师。请读取：
 用 Write 保存到 ${outputDir}/auto_architect_plan.md`, {
   label: '架构师提案',
   phase: '技术辩论',
-  model: m.phase3_deepdive.architect,
+  model: m.phase3_deepdive.architect[0],
 })
 
 const critic = await agent(`你是技术批判者，角色是"唱反调"——找出方案中的漏洞、风险和被忽视的替代方案。
@@ -257,7 +276,7 @@ const critic = await agent(`你是技术批判者，角色是"唱反调"——�
 你要犀利但不刻薄，目标是让方案更强，而不是推翻它。`, {
   label: '批判者挑战',
   phase: '技术辩论',
-  model: m.phase3_deepdive.critic,
+  model: m.phase3_deepdive.critic[0],
 })
 
 const synthesizer = await agent(`你是技术合成者。架构师提出了方案，批判者指出了问题，你来拍板定稿。
@@ -282,7 +301,7 @@ const synthesizer = await agent(`你是技术合成者。架构师提出了方�
 你拥有最终决定权，但每个决定都要给出理由。`, {
   label: '合成者定稿',
   phase: '技术辩论',
-  model: m.phase3_deepdive.synthesizer,
+  model: m.phase3_deepdive.synthesizer[0],
 })
 
 const novelty = await agent(`你是专利审查员，独立审查最终技术方案。
@@ -303,7 +322,7 @@ const novelty = await agent(`你是专利审查员，独立审查最终技术方
 用 Write 保存到 ${outputDir}/auto_novelty.md`, {
   label: '新颖性审查',
   phase: '技术辩论',
-  model: m.phase3_deepdive.novelty,
+  model: m.phase3_deepdive.novelty[0],
 })
 
 log(`技术辩论完成: 架构师→批判者→合成者→新颖性审查，四轮递进`)
@@ -337,7 +356,7 @@ const draft = await agent(`你是资深专利撰写工程师。请读取：
 用 Write 保存到 ${outputDir}/auto_patent_draft.md`, {
   label: '撰写初稿',
   phase: '撰写审核',
-  model: m.phase4_writing.draft,
+  model: m.phase4_writing.draft[0],
 })
 
 const review = await agent(`你是专利质量审核员，你要像真正的专利代理机构审核员一样严格审查。
@@ -383,13 +402,17 @@ const review = await agent(`你是专利质量审核员，你要像真正的专�
 用 Write 保存到 ${outputDir}/auto_quality_review.md`, {
   label: '质量审核',
   phase: '撰写审核',
-  model: m.phase4_writing.review,
+  model: m.phase4_writing.review[0],
 })
+
+// 统计模型使用情况
+const totalModels = Object.values(m).flatMap(p => Object.values(p)).flat().length
+const uniqueModels = [...new Set(Object.values(m).flatMap(p => Object.values(p)).flat())]
 
 log(`========================================`)
 log(`  全自动专利撰写完成！`)
 log(`========================================`)
-log(``)
+log(`使用模型: ${uniqueModels.join(', ')}`)
 log(`模型配置: ${configResult?.source || 'defaults'}`)
 log(`📋 产出文件清单:`)
 log(`  方向分析: auto_gap_finder.md / auto_combinator.md / auto_extender.md`)

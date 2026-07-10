@@ -1,11 +1,12 @@
 {
   "models": {
     "_comment": "可用模型: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, qiniu/gpt-5.5, anthropic/claude-haiku-4-5",
+    "_comment2": "每个角色可用单个模型字符串，或模型数组（多个模型并行→自动合并）",
 
     "phase1_direction": {
-      "gap_finder": "deepseek/deepseek-v4-pro",
-      "combinator": "deepseek/deepseek-v4-pro",
-      "extender": "deepseek/deepseek-v4-pro"
+      "gap_finder": ["deepseek/deepseek-v4-pro", "google/gemini-2.5-pro"],
+      "combinator": ["deepseek/deepseek-v4-pro", "google/gemini-2.5-pro"],
+      "extender": ["deepseek/deepseek-v4-pro", "anthropic/claude-haiku-4-5"]
     },
 
     "phase2_decision": {
