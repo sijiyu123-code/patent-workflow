@@ -1,34 +1,34 @@
 {
   "models": {
     "_comment": "可用: deepseek/deepseek-v4-pro, google/gemini-2.5-pro, z-ai/glm-5.2, anthropic/claude-haiku-4-5",
-    "_comment2": "gemini能对话但不能调Write, 通过deepseek relay写文件。gpt-5.5不可用。glm-5.2待测试。",
+    "_comment2": "gemini/gpt-5.5不能调Write; glm-5.2待验证。writer默认deepseek兜底。",
     "_comment3": "writer模型专门负责文件写入, 其他模型产出内容由writer落盘",
 
     "writer": "deepseek/deepseek-v4-pro",
 
     "phase1_direction": {
       "gap_finder": "deepseek/deepseek-v4-pro",
-      "combinator": "deepseek/deepseek-v4-pro",
+      "combinator": "z-ai/glm-5.2",
       "extender": "deepseek/deepseek-v4-pro"
     },
 
     "phase2_decision": {
       "judge_novelty": "deepseek/deepseek-v4-pro",
       "judge_feasibility": "deepseek/deepseek-v4-pro",
-      "judge_value": "deepseek/deepseek-v4-pro",
+      "judge_value": "z-ai/glm-5.2",
       "chief_judge": "google/gemini-2.5-pro"
     },
 
     "phase3_deepdive": {
       "architect": "google/gemini-2.5-pro",
-      "critic": "deepseek/deepseek-v4-pro",
+      "critic": "z-ai/glm-5.2",
       "synthesizer": "google/gemini-2.5-pro",
       "novelty": "deepseek/deepseek-v4-pro"
     },
 
     "phase4_writing": {
       "draft": "google/gemini-2.5-pro",
-      "review": "anthropic/claude-haiku-4-5"
+      "review": "z-ai/glm-5.2"
     }
   }
 }
