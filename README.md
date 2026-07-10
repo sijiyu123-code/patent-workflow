@@ -2,13 +2,29 @@
 
 ## 概述
 
-基于已有专利分析和当前工作内容，半自动化地完成新专利的：**方向构思 → 技术深挖 → 初稿撰写 → 迭代打磨**。
+基于已有专利分析和当前工作内容，全自动/半自动地完成新专利的：**方向构思 → 技术深挖 → 初稿撰写 → 迭代打磨**。
 
 ---
 
 ## 使用方法
 
-### 1. 准备工作内容（可选）
+### 1. 准备已有专利
+
+把你的专利 .docx/.doc 文件放入 `mine/` 目录，然后运行 Phase 0 生成摘要库：
+
+```
+mine/                        ← 放入已有专利文件
+  ├── 专利1.docx
+  ├── 专利2.docx
+  └── ...
+
+patent_summaries/            ← Phase 0 自动生成
+  ├── *_summary.md           ← 每份专利的结构化摘要
+  ├── patent_landscape.md    ← 专利全景地图
+  └── format_template.md     ← 撰写格式模板
+```
+
+### 2. 准备工作内容（可选）
 
 ```bash
 cp work_content.example.md work_content.md
@@ -17,7 +33,7 @@ cp work_content.example.md work_content.md
 
 不填也行，workflow 会纯基于已有专利的技术空白来构思方向。
 
-### 2. 设定方向（可选）
+### 3. 设定方向（可选）
 
 在 `config.json` 中设置 `direction_hint`，限定本次撰写的专利方向：
 
@@ -31,7 +47,7 @@ cp work_content.example.md work_content.md
 
 这个 hint 会注入到所有 Agent 的 prompt 中，确保全流程围绕该方向展开。
 
-### 3. 运行
+### 4. 运行
 
 ```js
 // 全自动模式（一键到底出初稿）
@@ -45,7 +61,7 @@ Workflow({scriptPath: "workflows/phase_full_auto.js"})
 
 **全自动**一次跑完，直接输出专利初稿。**半自动**每阶段暂停，你审完重跑自动跳到下一阶段。
 
-### 4. 切换模型
+### 5. 切换模型
 
 编辑 `config.json`：
 
@@ -70,7 +86,7 @@ Workflow({scriptPath: "workflows/phase_full_auto.js"})
 
 > gemini 不支持 Write 工具，workflow 自动用 deepseek relay 写文件，无需额外配置。
 
-### 5. 产出
+### 6. 产出
 
 ```
 outputs/
@@ -89,7 +105,7 @@ outputs/
 └── auto_quality_review.md      # 质量审核报告
 ```
 
-### 6. 迭代打磨
+### 7. 迭代打磨
 
 初稿出来后直接跟 Claude 对话修改：
 
